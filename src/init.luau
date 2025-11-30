@@ -61,6 +61,7 @@ local SLOT_LOCKED_TRANSPARENCY: number = SLOT_LOCKED_TRANSPARENCY_DEFAULT * PREF
 local SLOT_EQUIP_THICKNESS: number = targetScript:GetAttribute("EquipBorderSizePixel") or 5 -- Relative
 local SLOT_CORNER_RADIUS: UDim = targetScript:GetAttribute("CornerRadius") or UDim.new(0, 8)
 local SLOT_BORDER_COLOR: Color3 = Color3.new(1, 1, 1) -- Appears when dragging
+local SLOT_MINIMUM_SWAP_DISTANCE = 40 -- how close you need to drag a slot to another slot before a swap happens
 
 -- Tooltips
 local TOOLTIP_CORNER_RADIUS: UDim = SLOT_CORNER_RADIUS - UDim.new(0, 5) or UDim.new(0, 3)
@@ -861,9 +862,51 @@ local function MakeSlot(parent: Instance, initIndex: number?): GuiObject
 
 			-- Check where we were dropped
 			if CheckBounds(InventoryFrame, x, y) then
-				if slot.Index <= NumberOfHotbarSlots then
-					slot:MoveToInventory()
-				end
+				--if slot.Index <= NumberOfHotbarSlots then
+				--	slot:MoveToInventory()
+				--else -- New code to allow swapping from inventory slot to inventory slot
+					local closest: { number } = { math.huge, nil :: any }
+					for i: number = NumberOfHotbarSlots + 1, #Slots do --loop through all slots except hotbar
+						local otherSlot: any = Slots[i]
+						local offset: number = GetOffset(otherSlot.Frame, Vector2.new(x, y))
+						if offset < closest[1] then
+							closest = { offset, otherSlot }
+						end
+					end
+					print("Slot dragging" .. tostring(slot.Tool))
+					print("Slot landing" .. tostring(closest[2].Tool))
+					print("Distance: " .. tostring(closest[1]))
+					local closestSlot = closest[2]
+					local slotDistance = closest[1]
+					
+					if closestSlot ~= slot and slotDistance <= SLOT_MINIMUM_SWAP_DISTANCE then
+						slot:Swap(closestSlot)
+						local tool: Tool = slot.Tool
+						if IsEquipped(tool) then --NOTE: HopperBin
+							UnequipAllTools()
+						end
+						--[[if slot.Index > NumberOfHotbarSlots then
+							local tool: Tool = slot.Tool
+							if not tool then -- Clean up after ourselves if we're an inventory slot that's now empty
+								slot:Delete()
+							else -- Moved inventory slot to hotbar slot, and gained a tool that needs to be unequipped
+								if IsEquipped(tool) then --NOTE: HopperBin
+									UnequipAllTools()
+								end
+								-- Also hide the inventory slot if we're showing results right now
+								if ViewingSearchResults then
+									slot.Frame.Visible = false
+									slot.Frame.Parent = InventoryFrame
+								end
+							end
+						end]]
+					elseif closestSlot ~= slot then
+						slot:MoveToInventory()
+					end
+					------------------------- end new code
+				--end
+				
+				
 				-- Check for double clicking on an inventory slot, to move into empty hotbar slot
 				if slot.Index > NumberOfHotbarSlots and now - lastUpTime < DOUBLE_CLICK_TIME then
 					if LowestEmptySlot then
@@ -874,6 +917,8 @@ local function MakeSlot(parent: Instance, initIndex: number?): GuiObject
 					end
 					now = 0 -- Resets the timer
 				end
+				
+				
 			elseif CheckBounds(HotbarFrame, x, y) then
 				local closest: { number } = { math.huge, nil :: any }
 				for i: number = 1, NumberOfHotbarSlots do
